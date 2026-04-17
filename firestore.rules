@@ -1,0 +1,37 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Crises Collection
+    match /crises/{crisisId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() 
+        && request.resource.data.keys().hasAll(['crisisType', 'floor', 'roomNumber', 'severity', 'timestamp', 'status'])
+        && request.resource.data.crisisType is string
+        && request.resource.data.floor is int
+        && request.resource.data.severity in ['low', 'medium', 'high', 'critical']
+        && request.resource.data.status == 'active';
+      allow update: if isSignedIn() 
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'severity']);
+    }
+
+    // Rooms Collection
+    match /rooms/{roomId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn(); // Simplified for prototype, in production would be restricted to system/admin
+    }
+  }
+}
