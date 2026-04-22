@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   streamCrises, streamUnits, streamLogs, streamRooms, triggerCrisis, seedDatabase, 
   CrisisEvent, ResponderUnit, OperationalLog, RoomStatus, updateRoomStatus, clearAllCrises,
-  auth
+  auth, loginAdmin, logoutUser
 } from './services/firebaseService';
 import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { generateEvacuationRoute, EvacuationStep } from './services/aiService';
@@ -175,7 +175,7 @@ const Sidebar = ({ currentView, currentSubView, setView, setSubView, activeCrisi
           <Settings className="w-5 h-5" />
           <span>Settings</span>
         </button>
-        <button className="flex items-center gap-4 text-slate-400 hover:text-slate-100 px-8 py-3 transition-colors border-t border-slate-800/30">
+        <button onClick={async () => { await logoutUser(); setView('pitch'); }} className="flex items-center gap-4 text-slate-400 hover:text-slate-100 px-8 py-3 transition-colors border-t border-slate-800/30">
           <LogOut className="w-5 h-5" />
           <span>Log Out</span>
         </button>
@@ -1147,6 +1147,72 @@ const VisualPitch = ({ onComplete }: { onComplete: () => void; key?: string }) =
   );
 };
 
+const AdminLogin = ({ onLoginSuccess }: { onLoginSuccess: () => void }) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      await loginAdmin(email, password);
+      onLoginSuccess();
+    } catch (err: any) {
+      setError(err.message || 'Authentication failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center min-h-[70vh]">
+      <div className="w-full max-w-md bg-white p-10 rounded-[3rem] border border-slate-100 shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-secondary/10 rounded-full blur-3xl" />
+        <div className="flex flex-col gap-2 mb-8 relative z-10 text-center items-center">
+           <Shield className="w-12 h-12 text-secondary mb-2" />
+           <h2 className="text-3xl font-headline font-black italic uppercase tracking-tighter text-slate-900">Admin Portal</h2>
+           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Authorized Personnel Only</p>
+        </div>
+        
+        {error && <div className="mb-6 p-4 bg-red-50 text-red-600 text-xs font-bold rounded-xl">{error}</div>}
+
+        <form onSubmit={handleSubmit} className="space-y-6 relative z-10">
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-4">Email Address</label>
+            <input 
+              type="email" 
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 text-sm font-bold focus:ring-2 focus:ring-secondary/20 transition-all outline-none"
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-4">Password</label>
+            <input 
+              type="password" 
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 text-sm font-bold focus:ring-2 focus:ring-secondary/20 transition-all outline-none"
+              required
+            />
+          </div>
+          <button 
+            type="submit"
+            disabled={loading}
+            className={cn("w-full py-4 bg-slate-950 text-white rounded-[2rem] font-headline font-black text-lg uppercase tracking-widest shadow-xl transition-all italic tracking-tighter", loading ? "opacity-50" : "hover:scale-105 active:scale-95")}
+          >
+            {loading ? 'Authenticating...' : 'Secure Login'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 // --- Main Application ---
 
 export default function App() {
@@ -1155,7 +1221,7 @@ export default function App() {
   const [guestView, setGuestView] = useState<GuestSubView>('checkin');
   const [crises, setCrises] = useState<CrisisEvent[]>([]);
   const [rooms, setRooms] = useState<RoomStatus[]>([]);
-  const [, setUser] = useState<any>(null);
+  const [user, setUser] = useState<any>(null);
   
   useEffect(() => { 
     // Secure Session Initialization
@@ -1208,13 +1274,17 @@ export default function App() {
             
             {view === 'admin' && (
               <motion.div key={adminView} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.98 }}>
-                {adminView === 'dashboard' && <AdminDashboard rooms={rooms} />}
-                {adminView === 'incidents' && <AdminIncidents />}
-                {adminView === 'units' && <AdminUnits />}
-                {adminView === 'map' && (
-                  <ResourceInventoryDashboard />
+                {user && !user.isAnonymous ? (
+                  <>
+                    {adminView === 'dashboard' && <AdminDashboard rooms={rooms} />}
+                    {adminView === 'incidents' && <AdminIncidents />}
+                    {adminView === 'units' && <AdminUnits />}
+                    {adminView === 'map' && <ResourceInventoryDashboard />}
+                    {adminView === 'logs' && <AdminLogs />}
+                  </>
+                ) : (
+                  <AdminLogin onLoginSuccess={() => setAdminView('dashboard')} />
                 )}
-                {adminView === 'logs' && <AdminLogs />}
               </motion.div>
             )}
 

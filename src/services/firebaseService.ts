@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { 
   getFirestore, 
   doc, 
@@ -219,4 +219,18 @@ export const seedDatabase = async () => {
     console.error("Database seed failed:", error);
     throw error;
   }
+};
+
+// --- Auth Helpers ---
+
+export const loginAdmin = async (email: string, pass: string) => {
+  return await signInWithEmailAndPassword(auth, email, pass);
+};
+
+export const registerAdmin = async (email: string, pass: string) => {
+  return await createUserWithEmailAndPassword(auth, email, pass);
+};
+
+export const logoutUser = async () => {
+  return await signOut(auth);
 };
