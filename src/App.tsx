@@ -50,6 +50,7 @@ import {
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import MockMap from './components/MockMap';
+import GuestFacilityMap from './components/GuestFacilityMap';
 import { 
   AreaChart, 
   Area, 
@@ -1375,14 +1376,14 @@ export default function App() {
                 {guestView === 'dashboard' && <GuestDashboard setSubView={setGuestView} activeCrisis={activeCrisis} />}
                 {guestView === 'instructions' && <GuestGuide onBack={() => setGuestView('dashboard')} onNavigate={setGuestView} activeCrisis={activeCrisis} roomNumber="412" floorNumber={4} />}
                 {guestView === 'map' && (
-                   <div className="flex-1 flex flex-col bg-slate-50">
-                      <div className="p-6 border-b border-slate-200 flex justify-between items-center bg-white">
-                         <button onClick={() => setGuestView('dashboard')} className="text-[10px] font-black uppercase tracking-widest text-slate-400">Back</button>
+                   <div className="flex-1 flex flex-col bg-slate-50 overflow-hidden">
+                      <div className="p-6 border-b border-slate-200 flex justify-between items-center bg-white shrink-0">
+                         <button onClick={() => setGuestView('dashboard')} className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-900 transition-colors">Back</button>
                          <span className="text-xs font-black uppercase tracking-widest italic">Facility Guide</span>
                          <MapIcon className="w-4 h-4 text-secondary" />
                       </div>
-                      <div className="flex-1 p-4">
-                         <MockMap rooms={rooms} crises={crises} highlightRoom="412" className="h-full" />
+                      <div className="flex-1 p-4 overflow-y-auto">
+                         <GuestFacilityMap />
                       </div>
                    </div>
                 )}
@@ -1437,8 +1438,8 @@ export default function App() {
                         {guestView === 'dashboard' && <GuestDashboard setSubView={setGuestView} activeCrisis={activeCrisis} />}
                         {guestView === 'instructions' && <GuestGuide onBack={() => setGuestView('dashboard')} onNavigate={setGuestView} activeCrisis={activeCrisis} roomNumber="412" floorNumber={4} />}
                         {guestView === 'map' && (
-                           <div className="flex-1 p-4 bg-[#fcfdff]">
-                              <MockMap rooms={rooms} crises={crises} highlightRoom="412" className="h-full" />
+                           <div className="flex-1 p-4 bg-[#fcfdff] overflow-y-auto custom-scrollbar">
+                              <GuestFacilityMap />
                            </div>
                         )}
                         {guestView === 'sos' && (
