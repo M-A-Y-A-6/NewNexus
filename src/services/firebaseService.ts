@@ -12,7 +12,8 @@ import {
   orderBy,
   limit,
   deleteDoc,
-  getDocs
+  getDocs,
+  increment
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -59,6 +60,16 @@ export interface OperationalLog {
   source: string;
   status: string;
   category: 'system' | 'security' | 'alert' | 'hardware';
+}
+
+export interface FloorInventory {
+  id?: string;
+  floor: number;
+  linens: number;
+  safety: number;
+  supplies: number;
+  medical: number;
+  water: number;
 }
 
 // --- Crisis Handlers ---
@@ -157,6 +168,28 @@ export const addLog = async (log: Omit<OperationalLog, 'timestamp'>) => {
   });
 };
 
+// --- Inventory Handlers ---
+
+export const streamInventory = (callback: (inventory: FloorInventory[]) => void) => {
+  const q = query(collection(db, 'inventory'), orderBy('floor', 'asc'));
+  return onSnapshot(q, (snapshot) => {
+    const inv = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as FloorInventory));
+    callback(inv);
+  }, (error) => {
+    console.error("Inventory stream failed:", error);
+  });
+};
+
+export const updateInventoryCount = async (floorId: string, resource: keyof Omit<FloorInventory, 'id' | 'floor'>, change: number) => {
+  const docRef = doc(db, 'inventory', floorId);
+  await setDoc(docRef, { [resource]: increment(change) }, { merge: true });
+};
+
+export const updateFloorInventory = async (floorId: string, data: Partial<FloorInventory>) => {
+  const docRef = doc(db, 'inventory', floorId);
+  await setDoc(docRef, data, { merge: true });
+};
+
 // --- Seed Data ---
 
 export const seedDatabase = async () => {
@@ -212,6 +245,18 @@ export const seedDatabase = async () => {
     for (const r of initialRooms) {
       const { id, ...roomData } = r;
       await setDoc(doc(db, 'rooms', id), roomData);
+    }
+
+    const initialInventory = [
+      { id: 'floor-1', floor: 1, linens: 85, safety: 15, supplies: 250, medical: 8, water: 160 },
+      { id: 'floor-2', floor: 2, linens: 80, safety: 18, supplies: 240, medical: 9, water: 155 },
+      { id: 'floor-3', floor: 3, linens: 90, safety: 16, supplies: 260, medical: 7, water: 170 },
+      { id: 'floor-4', floor: 4, linens: 85, safety: 17, supplies: 245, medical: 10, water: 165 },
+      { id: 'floor-5', floor: 5, linens: 80, safety: 19, supplies: 245, medical: 8, water: 150 }
+    ];
+    for (const inv of initialInventory) {
+      const { id, ...invData } = inv;
+      await setDoc(doc(db, 'inventory', id), invData);
     }
 
     console.log("Database seeded successfully.");

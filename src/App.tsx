@@ -8,7 +8,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   streamCrises, streamUnits, streamLogs, streamRooms, triggerCrisis, seedDatabase, 
   CrisisEvent, ResponderUnit, OperationalLog, RoomStatus, updateRoomStatus, clearAllCrises,
-  auth, loginAdmin, logoutUser
+  auth, loginAdmin, logoutUser,
+  streamInventory, updateInventoryCount, updateFloorInventory, FloorInventory
 } from './services/firebaseService';
 import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { generateEvacuationRoute, EvacuationStep } from './services/aiService';
@@ -325,8 +326,25 @@ const AdminUnits = () => {
 };
 
 const ResourceInventoryDashboard = () => {
-  const floors = [1, 2, 3, 4, 5];
-  const resources = [
+  const [inventory, setInventory] = useState<FloorInventory[]>([]);
+  const [draft, setDraft] = useState<Record<string, FloorInventory>>({});
+  const [isDirty, setIsDirty] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    return streamInventory(setInventory);
+  }, []);
+
+  useEffect(() => {
+    if (!isDirty && inventory.length > 0) {
+      const initialDraft = inventory.reduce((acc, curr) => ({ ...acc, [curr.id!]: { ...curr } }), {} as Record<string, FloorInventory>);
+      setDraft(initialDraft);
+    }
+  }, [inventory, isDirty]);
+
+  const displayData = isDirty ? Object.values(draft).sort((a, b) => a.floor - b.floor) : [...inventory].sort((a, b) => a.floor - b.floor);
+
+  const resources: Array<{ id: keyof Omit<FloorInventory, 'id' | 'floor'>, label: string, icon: any, color: string, bg: string }> = [
     { id: 'linens', label: 'Linens', icon: Wind, color: 'text-blue-500', bg: 'bg-blue-50' },
     { id: 'safety', label: 'Safety Kits', icon: Shield, color: 'text-error', bg: 'bg-error/10' },
     { id: 'supplies', label: 'Guest Supplies', icon: Package, color: 'text-amber-600', bg: 'bg-amber-50' },
@@ -334,13 +352,34 @@ const ResourceInventoryDashboard = () => {
     { id: 'water', label: 'Water', icon: Droplet, color: 'text-sky-500', bg: 'bg-sky-50' },
   ];
 
-  // Mock data for overall tracking
-  const totals = {
-    linens: 420,
-    safety: 85,
-    supplies: 1240,
-    medical: 42,
-    water: 800
+  const totals = displayData.reduce((acc, curr) => {
+    resources.forEach(r => acc[r.id] = (acc[r.id] || 0) + (curr[r.id] || 0));
+    return acc;
+  }, {} as Record<string, number>);
+
+  const handleDraftUpdate = (floorId: string, resource: keyof Omit<FloorInventory, 'id' | 'floor'>, newValue: number) => {
+    if (isNaN(newValue)) return;
+    setIsDirty(true);
+    setDraft(prev => ({
+      ...prev,
+      [floorId]: {
+        ...prev[floorId],
+        [resource]: Math.max(0, newValue)
+      }
+    }));
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      const promises = Object.values(draft).map(floor => updateFloorInventory(floor.id!, floor));
+      await Promise.all(promises);
+      setIsDirty(false);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -356,7 +395,7 @@ const ResourceInventoryDashboard = () => {
               <div key={res.id} className="p-4 rounded-2xl bg-white border border-slate-100 shadow-sm flex flex-col items-center gap-2 min-w-[100px]">
                 <res.icon className={cn("w-5 h-5", res.color)} />
                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{res.label}</span>
-                <span className="text-lg font-black text-slate-900">{(totals as any)[res.id]}</span>
+                <span className="text-lg font-black text-slate-900">{totals[res.id] || 0}</span>
               </div>
             ))}
           </div>
@@ -368,6 +407,7 @@ const ResourceInventoryDashboard = () => {
            <div className="flex items-center justify-between mb-6">
               <h3 className="text-sm font-black uppercase tracking-widest text-slate-900 border-l-4 border-slate-900 pl-4">Floor-Wise Allocation</h3>
               <div className="flex gap-2">
+                 <button onClick={() => seedDatabase()} className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest mr-2">Reset Data</button>
                  <button className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest">Export Manifest</button>
               </div>
            </div>
@@ -384,24 +424,46 @@ const ResourceInventoryDashboard = () => {
                  </tr>
                </thead>
                <tbody className="divide-y divide-slate-50">
-                 {floors.map(floor => (
-                   <tr key={floor} className="hover:bg-slate-50/30 transition-all group">
+                 {displayData.length === 0 && (
+                   <tr><td colSpan={7} className="px-8 py-12 text-center text-[10px] font-black uppercase tracking-widest text-slate-400">No inventory data. Please reset data.</td></tr>
+                 )}
+                 {displayData.map(floor => (
+                   <tr key={floor.id} className="hover:bg-slate-50/30 transition-all group">
                      <td className="px-8 py-6">
                        <div className="flex items-center gap-3">
-                         <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-white text-xs font-black">L{floor}</div>
-                         <span className="font-bold text-slate-900 uppercase text-xs tracking-widest">Sector {String.fromCharCode(64 + floor)}</span>
+                         <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-white text-xs font-black">L{floor.floor}</div>
+                         <span className="font-bold text-slate-900 uppercase text-xs tracking-widest">Sector {String.fromCharCode(64 + floor.floor)}</span>
                        </div>
                      </td>
                      {resources.map(res => {
-                       const count = Math.floor(Math.random() * 50) + 10;
+                       const count = floor[res.id] || 0;
                        return (
                          <td key={res.id} className="px-8 py-6">
-                           <div className="flex flex-col gap-1">
-                             <span className="text-sm font-black text-slate-900 font-mono">{count}</span>
-                             <div className="w-12 h-1 bg-slate-100 rounded-full overflow-hidden">
+                           <div className="flex flex-col gap-2">
+                             <div className="flex items-center justify-between">
+                               <button 
+                                 onClick={() => handleDraftUpdate(floor.id!, res.id, count - 1)}
+                                 className="w-5 h-5 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-slate-200 hover:text-slate-900 transition-all font-bold text-xs"
+                               >
+                                 -
+                               </button>
+                               <input 
+                                 type="number"
+                                 value={count}
+                                 onChange={(e) => handleDraftUpdate(floor.id!, res.id, parseInt(e.target.value) || 0)}
+                                 className="w-12 text-sm font-black text-slate-900 font-mono text-center bg-transparent focus:bg-slate-100 rounded focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [appearance:textfield]"
+                               />
+                               <button 
+                                 onClick={() => handleDraftUpdate(floor.id!, res.id, count + 1)}
+                                 className="w-5 h-5 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-slate-200 hover:text-slate-900 transition-all font-bold text-xs"
+                               >
+                                 +
+                               </button>
+                             </div>
+                             <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
                                 <div 
-                                  className={cn("h-full rounded-full transition-all duration-1000", res.color.replace('text-', 'bg-'))} 
-                                  style={{ width: `${(count/60)*100}%` }} 
+                                  className={cn("h-full rounded-full transition-all duration-300", res.color.replace('text-', 'bg-'))} 
+                                  style={{ width: `${Math.min(100, (count / 300) * 100)}%` }} 
                                 />
                              </div>
                            </div>
@@ -416,6 +478,25 @@ const ResourceInventoryDashboard = () => {
                </tbody>
              </table>
            </div>
+           
+           <AnimatePresence>
+             {isDirty && (
+               <motion.div 
+                 initial={{ opacity: 0, y: 20 }}
+                 animate={{ opacity: 1, y: 0 }}
+                 exit={{ opacity: 0, y: 20 }}
+                 className="mt-8 flex justify-end"
+               >
+                 <button 
+                   onClick={handleSave} 
+                   disabled={isSaving}
+                   className="px-10 py-4 bg-[#c00000] text-white rounded-[2rem] font-headline font-black text-lg uppercase tracking-widest shadow-2xl shadow-red-500/30 hover:scale-105 active:scale-95 transition-all disabled:opacity-50 italic"
+                 >
+                   {isSaving ? 'Syncing...' : 'Save Changes'}
+                 </button>
+               </motion.div>
+             )}
+           </AnimatePresence>
         </div>
       </div>
     </div>
